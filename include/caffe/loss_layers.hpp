@@ -50,6 +50,41 @@ class AccuracyLayer : public Layer<Dtype> {
   int top_k_;
 };
 
+
+/* PixelAccuracyLayer
+  Note: not an actual loss layer! Does not implement backwards step.
+  Computes the accuracy of argmax(a) with respect to b.
+*/
+template <typename Dtype>
+class PixelAccuracyLayer : public Layer<Dtype> {
+ public:
+  explicit PixelAccuracyLayer(const LayerParameter& param)
+      : Layer<Dtype>(param) {}
+  virtual void SetUp(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+
+  virtual inline LayerParameter_LayerType type() const {
+    return LayerParameter_LayerType_PIXEL_ACCURACY;
+  }
+
+  virtual inline int ExactNumBottomBlobs() const { return 2; }
+  virtual inline int ExactNumTopBlobs() const { return 1; }
+
+ protected:
+  virtual Dtype Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom) {
+    NOT_IMPLEMENTED;
+  }
+
+  int top_k_;
+  Blob<Dtype> true_label_blob_;
+  Blob<Dtype> all_pred_;
+  Blob<Dtype> loc_pred_;
+  Blob<Dtype> eachloc_cal_;
+};
+
 /* LossLayer
   Takes two inputs of same num (a and b), and has no output.
   The gradient is propagated to a.
@@ -208,6 +243,7 @@ class SigmoidCrossEntropyLossLayer : public LossLayer<Dtype> {
 
 // Forward declare SoftmaxLayer for use in SoftmaxWithLossLayer.
 template <typename Dtype> class SoftmaxLayer;
+template <typename Dtype> class PixelSoftmaxLayer;
 
 /* SoftmaxWithLossLayer
   Implements softmax and computes the loss.
@@ -251,6 +287,51 @@ class SoftmaxWithLossLayer : public Layer<Dtype> {
   // Vector holders to call the underlying softmax layer forward and backward.
   vector<Blob<Dtype>*> softmax_bottom_vec_;
   vector<Blob<Dtype>*> softmax_top_vec_;
+};
+
+
+/* PixelSoftmaxWithLossLayer
+  Implements softmax and computes the loss.
+
+  It is preferred over separate softmax + multinomiallogisticloss
+  layers due to more numerically stable gradients.
+
+  In test, this layer could be replaced by simple softmax layer.
+*/
+template <typename Dtype>
+class PixelSoftmaxWithLossLayer : public Layer<Dtype> {
+ public:
+  explicit PixelSoftmaxWithLossLayer(const LayerParameter& param)
+      : Layer<Dtype>(param), pixel_softmax_layer_(new PixelSoftmaxLayer<Dtype>(param)) {}
+  virtual void SetUp(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+
+  virtual inline LayerParameter_LayerType type() const {
+    return LayerParameter_LayerType_PIXEL_SOFTMAX_LOSS;
+  }
+  virtual inline int MaxTopBlobs() const { return 2; }
+  // We cannot backpropagate to the labels; ignore force_backward for these
+  // inputs.
+  virtual inline bool AllowForceBackward(const int bottom_index) const {
+    return bottom_index != 1;
+  }
+
+ protected:
+  virtual Dtype Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual Dtype Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+
+  shared_ptr<PixelSoftmaxLayer<Dtype> > pixel_softmax_layer_;
+  // prob stores the output probability of the layer.
+  Blob<Dtype> prob_;
+  // Vector holders to call the underlying softmax layer forward and backward.
+  vector<Blob<Dtype>*> pixel_softmax_bottom_vec_;
+  vector<Blob<Dtype>*> pixel_softmax_top_vec_;
 };
 
 }  // namespace caffe

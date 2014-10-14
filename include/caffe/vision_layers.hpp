@@ -274,6 +274,72 @@ class PoolingLayer : public Layer<Dtype> {
   Blob<int> max_idx_;
 };
 
+
+/* PoolingWithBgLayer
+*/
+template <typename Dtype>
+class PoolingWithBgLayer : public Layer<Dtype> {
+ public:
+  explicit PoolingWithBgLayer(const LayerParameter& param)
+      : Layer<Dtype>(param) {}
+  virtual void SetUp(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+
+  virtual inline LayerParameter_LayerType type() const {
+    return LayerParameter_LayerType_POOLING_WITHBG;
+  }
+  virtual inline int ExactNumBottomBlobs() const { return 2; }
+  virtual inline int MinTopBlobs() const { return 1; }
+  virtual inline int MaxTopBlobs() const { return max_top_blobs_; }
+
+ protected:
+  virtual Dtype Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual Dtype Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+
+  int max_top_blobs_;
+  int kernel_h_, kernel_w_;
+  int stride_h_, stride_w_;
+  int pad_h_, pad_w_;
+  int channels_;
+  int height_;
+  int width_;
+  int pooled_height_;
+  int pooled_width_;
+  Blob<Dtype> rand_idx_;
+  Blob<int> max_idx_;
+  Blob<Dtype> whether_bg_;
+};
+
+template <typename Dtype>
+class UpSampleLayer : public Layer<Dtype> {
+ public:
+  explicit UpSampleLayer(const LayerParameter& param)
+      : Layer<Dtype>(param) {}
+  virtual void SetUp(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+
+  virtual inline LayerParameter_LayerType type() const {
+    return LayerParameter_LayerType_UPSAMPLE;
+  }
+
+ protected:
+  virtual Dtype Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual Dtype Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+
+};
+
 }  // namespace caffe
 
 #endif  // CAFFE_VISION_LAYERS_HPP_

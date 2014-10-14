@@ -147,6 +147,42 @@ class SoftmaxLayer : public Layer<Dtype> {
   Blob<Dtype> scale_;
 };
 
+
+/* PixelSoftmaxLayer
+*/
+template <typename Dtype>
+class PixelSoftmaxLayer : public Layer<Dtype> {
+ public:
+  explicit PixelSoftmaxLayer(const LayerParameter& param)
+      : Layer<Dtype>(param) {}
+  virtual void SetUp(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+
+  virtual inline LayerParameter_LayerType type() const {
+    return LayerParameter_LayerType_PIXEL_SOFTMAX;
+  }
+  virtual inline int ExactNumBottomBlobs() const { return 1; }
+  virtual inline int ExactNumTopBlobs() const { return 1; }
+
+ protected:
+  virtual Dtype Forward_cpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual Dtype Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+      vector<Blob<Dtype>*>* top);
+  virtual void Backward_cpu(const vector<Blob<Dtype>*>& top,
+      const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+  virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
+     const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
+
+  // sum_multiplier is just used to carry out sum using blas
+  Blob<Dtype> sum_multiplier_;
+  // scale is an intermediate blob to hold temporary results.
+  Blob<Dtype> scale_;
+  //temp
+  Blob<Dtype> temp_top_blob_;
+  Blob<Dtype> temp_bottom_blob_;
+};
+
 /* SplitLayer
 */
 template <typename Dtype>

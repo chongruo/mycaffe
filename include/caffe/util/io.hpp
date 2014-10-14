@@ -71,6 +71,19 @@ inline bool ReadImageToDatum(const string& filename, const int label,
 }
 
 
+bool ReadImageToDatum_fourchannel(const string& filename, const int label,
+    const int height, const int width, const bool is_color, Datum* datum);
+
+inline bool ReadImageToDatum_fourchannel(const string& filename, const int label,
+    const int height, const int width, Datum* datum) {
+  return ReadImageToDatum_fourchannel(filename, label, height, width, true, datum);
+}
+
+inline bool ReadImageToDatum_fourchannel(const string& filename, const int label,
+    Datum* datum) {
+  return ReadImageToDatum_fourchannel(filename, label, 0, 0, datum);
+}
+
 template <typename Dtype>
 void hdf5_load_nd_dataset_helper(
   hid_t file_id, const char* dataset_name_, int min_dim, int max_dim,
