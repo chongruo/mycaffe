@@ -338,6 +338,10 @@ class UpSampleLayer : public Layer<Dtype> {
   virtual void Backward_gpu(const vector<Blob<Dtype>*>& top,
       const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom);
 
+  int channels_;
+  int height_;
+  int width_;
+
 };
 
 }  // namespace caffe
