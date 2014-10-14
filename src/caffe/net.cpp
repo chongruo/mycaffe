@@ -605,8 +605,8 @@ void Net<Dtype>::ShareTrainedLayersWith(Net* other) {
     for (int j = 0; j < target_blobs.size(); ++j) {
       Blob<Dtype>* source_blob = source_layer->blobs()[j].get();
       CHECK_EQ(target_blobs[j]->num(), source_blob->num());
-      LOG(INFO)<<"source_layer_name "<<source_layer_name;
-      LOG(INFO)<<"target_layer_id_layer_name "<<layer_names_[target_layer_id];
+      //LOG(INFO)<<"source_layer_name "<<source_layer_name;
+      //LOG(INFO)<<"target_layer_id_layer_name "<<layer_names_[target_layer_id];
       CHECK_EQ(target_blobs[j]->channels(), source_blob->channels());
       CHECK_EQ(target_blobs[j]->height(), source_blob->height());
       CHECK_EQ(target_blobs[j]->width(), source_blob->width());
