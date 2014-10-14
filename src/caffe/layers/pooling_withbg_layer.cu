@@ -14,7 +14,7 @@ __global__ void MaxPoolForward(const int nthreads, const Dtype* bottom_data,
     const int width, const int pooled_height, const int pooled_width,
     const int kernel_h, const int kernel_w, const int stride_h,
     const int stride_w, const int pad_h, const int pad_w, Dtype* top_data,
-    int* mask, Dtype* top_mask) {
+    int* mask, Dtype* top_mask, const Dtype* whether_bg_data) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -29,15 +29,22 @@ __global__ void MaxPoolForward(const int nthreads, const Dtype* bottom_data,
     Dtype maxval = -FLT_MAX;
     int maxidx = -1;
     bottom_data += (n * channels + c) * height * width;
+    whether_bg_data += (n * height * width);
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
-        if (bottom_data[h * width + w] > maxval) {
-          maxidx = h * width + w;
-          maxval = bottom_data[maxidx];
+        if (whether_bg_data[h*width+w]==static_cast<Dtype>(1)){
+          if (bottom_data[h * width + w] > maxval) {
+            maxidx = h * width + w;
+            maxval = bottom_data[maxidx];
+          }
         }
       }
     }
     top_data[index] = maxval;
+    if (maxval==-FLT_MAX){
+      top_data[index]=0;
+    }
+
     if (mask) {
       mask[index] = maxidx;
     } else {
@@ -47,11 +54,42 @@ __global__ void MaxPoolForward(const int nthreads, const Dtype* bottom_data,
 }
 
 template <typename Dtype>
+__global__ void GetWhetherBgData(const int nthreads, const Dtype* bottom_data_bg, const int num, 
+    const int height, const int width, const int pooled_h, const int pooled_w, 
+    const int kernel, const int ratio, Dtype* whether_bg_data){
+    CUDA_KERNEL_LOOP(index, nthreads){
+      int pw = index % pooled_w;
+      int ph = (index / pooled_w) % pooled_h;
+      int n = index / pooled_w / pooled_h;
+      
+      int hstart = ph;
+      int wstart = pw;
+      int hend = min(hstart + kernel, height);
+      int wend = min(wstart + kernel, width);
+      
+      int range_size = (hend-hstart)*(wend-wstart);
+      int range_count = 0;
+      for (int h = hstart; h<hend; ++h){
+        for(int w = wstart; w<wend; ++w){
+          int ori_index = h * height + w;
+          if(bottom_data_bg[n*height*width + ori_index]==1){
+            ++range_count;
+          }
+        }
+      }
+      whether_bg_data[index] = (range_size/range_count)<ratio ? static_cast<Dtype>(1):static_cast<Dtype>(0);
+    }
+}
+
+
+
+template <typename Dtype>
 __global__ void AvePoolForward(const int nthreads, const Dtype* bottom_data,
     const int num, const int channels, const int height,
     const int width, const int pooled_height, const int pooled_width,
     const int kernel_h, const int kernel_w, const int stride_h,
-    const int stride_w, const int pad_h, const int pad_w, Dtype* top_data) {
+    const int stride_w, const int pad_h, const int pad_w, Dtype* top_data,
+    const Dtype* whether_bg_data) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -68,9 +106,12 @@ __global__ void AvePoolForward(const int nthreads, const Dtype* bottom_data,
     wend = min(wend, width);
     Dtype aveval = 0;
     bottom_data += (n * channels + c) * height * width;
+    whether_bg_data += (n * height * width);
     for (int h = hstart; h < hend; ++h) {
       for (int w = wstart; w < wend; ++w) {
-        aveval += bottom_data[h * width + w];
+        if (whether_bg_data[h*width+w]==static_cast<Dtype>(1)){
+           aveval += bottom_data[h * width + w];
+        }
       }
     }
     top_data[index] = aveval / pool_size;
@@ -151,17 +192,31 @@ __global__ void StoPoolForwardTest(const int nthreads,
 
 
 template <typename Dtype>
-Dtype PoolingLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
+Dtype PoolingWithBgLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
       vector<Blob<Dtype>*>* top) {
   const Dtype* bottom_data = bottom[0]->gpu_data();
+  const Dtype* bottom_data_bg = bottom[1]->gpu_data();
+  Dtype* whether_bg_data = whether_bg_.mutable_gpu_data();
   Dtype* top_data = (*top)[0]->mutable_gpu_data();
   int count = (*top)[0]->count();
   // We'll output the mask to top[1] if it's of size >1.
   const bool use_top_mask = top->size() > 1;
   int* mask = NULL;
   Dtype* top_mask = NULL;
-  switch (this->layer_param_.pooling_withbg_param().pool()) {
-  case PoolingWithBgParameter_PoolMethod_MAX:
+
+  // get whether_bg_data
+  int ratio = 9;    // (range_size/range_count < ratio ? 1:0)
+  int wcount = whether_bg_.count();
+  int crop_size = bottom[1]->height();
+  int bg_kernel = crop_size - bottom[0]->height() + 1;
+  GetWhetherBgData<Dtype><<<CAFFE_GET_BLOCKS(wcount),CAFFE_CUDA_NUM_THREADS>>>(
+      wcount,bottom_data_bg, bottom[0]->num(),crop_size, crop_size, bottom[0]->height(),
+      bottom[0]->width(), bg_kernel, ratio, whether_bg_data);
+  whether_bg_data = whether_bg_.mutable_gpu_data();
+             
+ 
+  switch (this->layer_param_.pooling_param().pool()) {
+  case PoolingParameter_PoolMethod_MAX:
     if (use_top_mask) {
       top_mask = (*top)[1]->mutable_gpu_data();
     } else {
@@ -172,16 +227,16 @@ Dtype PoolingLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
         count, bottom_data, bottom[0]->num(), channels_,
         height_, width_, pooled_height_, pooled_width_, kernel_h_,
         kernel_w_, stride_h_, stride_w_, pad_h_, pad_w_, top_data,
-        mask, top_mask);
+        mask, top_mask, whether_bg_data);
     break;
-  case PoolingWithBgParameter_PoolMethod_AVE:
+  case PoolingParameter_PoolMethod_AVE:
     // NOLINT_NEXT_LINE(whitespace/operators)
     AvePoolForward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, bottom_data, bottom[0]->num(), channels_,
         height_, width_, pooled_height_, pooled_width_, kernel_h_,
-        kernel_w_, stride_h_, stride_w_, pad_h_, pad_w_, top_data);
+        kernel_w_, stride_h_, stride_w_, pad_h_, pad_w_, top_data, whether_bg_data);
     break;
-  case PoolingWithBgParameter_PoolMethod_STOCHASTIC:
+  case PoolingParameter_PoolMethod_STOCHASTIC:
     if (Caffe::phase() == Caffe::TRAIN) {
       // We need to create the random index as well.
       caffe_gpu_rng_uniform(count, Dtype(0), Dtype(1),
@@ -262,7 +317,7 @@ __global__ void AvePoolBackward(const int nthreads, const Dtype* top_diff,
     const int width, const int pooled_height, const int pooled_width,
     const int kernel_h, const int kernel_w, const int stride_h,
     const int stride_w, const int pad_h, const int pad_w,
-    Dtype* bottom_diff) {
+    Dtype* bottom_diff, const Dtype* whether_bg_data) {
   CUDA_KERNEL_LOOP(index, nthreads) {
     // find out the local index
     // find out the local offset
@@ -276,6 +331,7 @@ __global__ void AvePoolBackward(const int nthreads, const Dtype* top_diff,
     int pwend = min(w / stride_w + 1, pooled_width);
     Dtype gradient = 0;
     top_diff += (n * channels + c) * pooled_height * pooled_width;
+    whether_bg_data += (n*h*w); 
     for (int ph = phstart; ph < phend; ++ph) {
       for (int pw = pwstart; pw < pwend; ++pw) {
         // figure out the pooling size
@@ -284,7 +340,9 @@ __global__ void AvePoolBackward(const int nthreads, const Dtype* top_diff,
         int hend = min(hstart + kernel_h, height + pad_h);
         int wend = min(wstart + kernel_w, width + pad_w);
         int pool_size = (hend - hstart) * (wend - wstart);
-        gradient += top_diff[ph * pooled_width + pw] / pool_size;
+        if (whether_bg_data[index]==static_cast<Dtype>(1)){
+           gradient += top_diff[ph * pooled_width + pw] / pool_size;
+        }
       }
     }
     bottom_diff[index] = gradient;
@@ -325,21 +383,23 @@ __global__ void StoPoolBackward(const int nthreads,
 
 
 template <typename Dtype>
-void PoolingLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
+void PoolingWithBgLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
       const vector<bool>& propagate_down, vector<Blob<Dtype>*>* bottom) {
   if (!propagate_down[0]) {
     return;
   }
   const Dtype* top_diff = top[0]->gpu_diff();
   Dtype* bottom_diff = (*bottom)[0]->mutable_gpu_diff();
+  Dtype* whether_bg_data = whether_bg_.mutable_gpu_data();
   const int count = (*bottom)[0]->count();
   caffe_gpu_set(count, Dtype(0.), bottom_diff);
+
   // We'll output the mask to top[1] if it's of size >1.
   const bool use_top_mask = top.size() > 1;
   const int* mask = NULL;
   const Dtype* top_mask = NULL;
-  switch (this->layer_param_.pooling_withbg_param().pool()) {
-  case PoolingWithBgParameter_PoolMethod_MAX:
+  switch (this->layer_param_.pooling_param().pool()) {
+  case PoolingParameter_PoolMethod_MAX:
     if (use_top_mask) {
       top_mask = top[1]->gpu_data();
     } else {
@@ -352,14 +412,14 @@ void PoolingLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
         kernel_h_, kernel_w_, stride_h_, stride_w_, pad_h_, pad_w_,
         bottom_diff);
     break;
-  case PoolingWithBgParameter_PoolMethod_AVE:
+  case PoolingParameter_PoolMethod_AVE:
     // NOLINT_NEXT_LINE(whitespace/operators)
     AvePoolBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, top_diff, top[0]->num(), channels_,
         height_, width_, pooled_height_, pooled_width_, kernel_h_,
-        kernel_w_, stride_h_, stride_w_, pad_h_, pad_w_, bottom_diff);
+        kernel_w_, stride_h_, stride_w_, pad_h_, pad_w_, bottom_diff,whether_bg_data);
     break;
-  case PoolingWithBgParameter_PoolMethod_STOCHASTIC:
+  case PoolingParameter_PoolMethod_STOCHASTIC:
     // NOLINT_NEXT_LINE(whitespace/operators)
     StoPoolBackward<Dtype><<<CAFFE_GET_BLOCKS(count), CAFFE_CUDA_NUM_THREADS>>>(
         count, rand_idx_.gpu_data(), top_diff,
@@ -374,7 +434,7 @@ void PoolingLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
 }
 
 
-INSTANTIATE_CLASS(PoolingLayer);
+INSTANTIATE_CLASS(PoolingWithBgLayer);
 
 
 }  // namespace caffe

@@ -14,7 +14,7 @@ Dtype SliceLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     int offset_num = 0;
     for (int i = 0; i < top->size(); ++i) {
       Blob<Dtype>* blob = (*top)[i];
-      Dtype* top_data = blob->mutable_gpu_data();
+      Dtype* top_data = (*top)[i]->mutable_gpu_data();
       caffe_copy(blob->count(), bottom_data + bottom[0]->offset(offset_num),
                  top_data);
       offset_num += blob->num();
@@ -23,7 +23,7 @@ Dtype SliceLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
     int offset_channel = 0;
     for (int i = 0; i < top->size(); ++i) {
       Blob<Dtype>* blob = (*top)[i];
-      Dtype* top_data = blob->mutable_gpu_data();
+      Dtype* top_data = (*top)[i]->mutable_gpu_data();
       const int num_elem = blob->channels() * blob->height() * blob->width();
       for (int n = 0; n < num_; ++n) {
         caffe_copy(num_elem, bottom_data + bottom[0]->offset(n, offset_channel),

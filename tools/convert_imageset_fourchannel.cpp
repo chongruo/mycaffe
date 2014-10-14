@@ -55,7 +55,6 @@ int main(int argc, char** argv) {
   string filename;
   int label;
   while (infile >> filename >> label) {
-    LOG(INFO)<<"output "<<filename<<" "<<label;
     lines.push_back(std::make_pair(filename, label));
   }
   if (argc >= (arg_offset+5) && argv[arg_offset+4][0] == '1') {
@@ -131,9 +130,9 @@ int main(int argc, char** argv) {
 
   for (int line_id = 0; line_id < lines.size(); ++line_id) {
     if(line_id==0){
-        LOG(INFO)<<"        leveldb-3channels    ";
+        LOG(INFO)<<"      leveldb-4channels    ";
     }
-    if (!ReadImageToDatum(root_folder + lines[line_id].first,
+    if (!ReadImageToDatum_fourchannel(root_folder + lines[line_id].first,
         lines[line_id].second, resize_height, resize_width, is_color, &datum)) {
       continue;
     }

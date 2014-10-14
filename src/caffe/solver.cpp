@@ -239,6 +239,10 @@ void Solver<Dtype>::Test(const int test_net_id) {
   vector<Blob<Dtype>*> bottom_vec;
   Dtype loss = 0;
   for (int i = 0; i < param_.test_iter(test_net_id); ++i) {
+    int how = param_.test_iter(test_net_id) / 10;
+    if (i%how==0){
+  	LOG(INFO) << "test iter: "<< i <<"/"<<param_.test_iter(test_net_id);
+    }
     Dtype iter_loss;
     const vector<Blob<Dtype>*>& result =
         test_nets_[test_net_id]->Forward(bottom_vec, &iter_loss);

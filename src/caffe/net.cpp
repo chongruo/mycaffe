@@ -47,12 +47,14 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
   CHECK_EQ(param.input_size() * 4, param.input_dim_size())
       << "Incorrect input blob dimension specifications.";
   memory_used_ = 0;
+  size_t wu_memory_used = 0;
   // set the input blobs
   for (int input_id = 0; input_id < param.input_size(); ++input_id) {
     const int layer_id = -1;  // inputs have fake layer ID -1
     AppendTop(param, layer_id, input_id, &available_blobs, &blob_name_to_idx);
   }
   DLOG(INFO) << "Memory required for data: " << memory_used_ * sizeof(Dtype);
+  DLOG(INFO) << "Wu Memory required for data: " << wu_memory_used * sizeof(Dtype);
   // For each layer, set up their input and output
   bottom_vecs_.resize(param.layers_size());
   top_vecs_.resize(param.layers_size());
@@ -85,8 +87,11 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
           << top_vecs_[layer_id][top_id]->height() << " "
           << top_vecs_[layer_id][top_id]->width() << " ("
           << top_vecs_[layer_id][top_id]->count() << ")";
+      wu_memory_used += top_vecs_[layer_id][top_id]->count();
     }
-    DLOG(INFO) << "Memory required for data: " << memory_used_ * sizeof(Dtype);
+
+    LOG(INFO) << "Wu Memory required for data: " << wu_memory_used;
+    LOG(INFO) << "Wu Memory required for data(Dtype): " << wu_memory_used * sizeof(Dtype)<<" ("<< (wu_memory_used*sizeof(Dtype))/1024 <<")";
     const int blobs_lr_size = layer_param.blobs_lr_size();
     const int num_param_blobs = layers_[layer_id]->blobs().size();
     CHECK(blobs_lr_size == num_param_blobs || blobs_lr_size == 0)
@@ -166,6 +171,9 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
   GetLearningRateAndWeightDecay();
   LOG(INFO) << "Network initialization done.";
   LOG(INFO) << "Memory required for data: " << memory_used_ * sizeof(Dtype);
+  LOG(INFO) << "Wu Memory required for data: " << wu_memory_used;
+  LOG(INFO) << "sizeof(Dtype) " << sizeof(Dtype);
+  LOG(INFO) << "Wu Memory required for data(Dtype): " << wu_memory_used * sizeof(Dtype)<<" ("<< (wu_memory_used*sizeof(Dtype))/(1024*1024) <<")";
   // Don't display debug info by default.
   debug_info_ = false;
 }
@@ -294,6 +302,7 @@ void Net<Dtype>::AppendTop(const NetParameter& param, const int layer_id,
     shared_ptr<Blob<Dtype> > blob_pointer(new Blob<Dtype>());
     const int blob_id = blobs_.size();
     blobs_.push_back(blob_pointer);
+    LOG(INFO)<<"blob_pointer->num(): "<<blob_pointer->num();
     blob_names_.push_back(blob_name);
     blob_need_backward_.push_back(false);
     (*blob_name_to_idx)[blob_name] = blob_id;
@@ -309,7 +318,10 @@ void Net<Dtype>::AppendTop(const NetParameter& param, const int layer_id,
       top_id_vecs_[layer_id].push_back(blob_id);
       top_vecs_[layer_id].push_back(blob_pointer.get());
     }
-    memory_used_ += blob_pointer->count();
+    this->memory_used_ += blob_pointer->count();
+    //LOG(INFO)<<"wu_blob_name: "<<blob_name;
+    //LOG(INFO)<<"wu_memory_used: "<<this->memory_used_;
+
   }
   available_blobs->insert(blob_name);
 }
@@ -438,10 +450,12 @@ Dtype Net<Dtype>::ForwardFromTo(int start, int end) {
   CHECK_LT(end, layers_.size());
   Dtype loss = 0;
   for (int i = start; i <= end; ++i) {
-    // LOG(ERROR) << "Forwarding " << layer_names_[i];
+    //LOG(ERROR) << "Forwarding " << layer_names_[i];
     Dtype layer_loss = layers_[i]->Forward(bottom_vecs_[i], &top_vecs_[i]);
     loss += layer_loss;
     if (debug_info_) { ForwardDebugInfo(i); }
+    //ForwardDebugInfo(i);
+    
   }
   return loss;
 }

@@ -17,6 +17,14 @@ Layer<Dtype>* GetLayer(const LayerParameter& param) {
   const string& name = param.name();
   const LayerParameter_LayerType& type = param.type();
   switch (type) {
+  case LayerParameter_LayerType_DATA_WITHBG:
+    return new DataWithBgLayer<Dtype>(param);
+  case LayerParameter_LayerType_UPSAMPLE:
+    return new UpSampleLayer<Dtype>(param);
+  case LayerParameter_LayerType_DATA_TWO:
+    return new DataTwoLayer<Dtype>(param);
+  case LayerParameter_LayerType_POOLING_WITHBG:
+    return new PoolingWithBgLayer<Dtype>(param);
   case LayerParameter_LayerType_ACCURACY:
     return new AccuracyLayer<Dtype>(param);
   case LayerParameter_LayerType_ARGMAX:

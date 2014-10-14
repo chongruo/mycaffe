@@ -46,6 +46,7 @@ void WriteProtoToTextFile(const Message& proto, const char* filename) {
 }
 
 bool ReadProtoFromBinaryFile(const char* filename, Message* proto) {
+  LOG(INFO) << "enter ReadProtoFromBianryFile";
   int fd = open(filename, O_RDONLY);
   CHECK_NE(fd, -1) << "File not found: " << filename;
   ZeroCopyInputStream* raw_input = new FileInputStream(fd);
@@ -53,6 +54,7 @@ bool ReadProtoFromBinaryFile(const char* filename, Message* proto) {
   coded_input->SetTotalBytesLimit(1073741824, 536870912);
 
   bool success = proto->ParseFromCodedStream(coded_input);
+  LOG(INFO) << "success " << success;
 
   delete coded_input;
   delete raw_input;
@@ -72,7 +74,7 @@ bool ReadImageToDatum(const string& filename, const int label,
     CV_LOAD_IMAGE_GRAYSCALE);
   if (height > 0 && width > 0) {
     cv::Mat cv_img_origin = cv::imread(filename, cv_read_flag);
-    cv::resize(cv_img_origin, cv_img, cv::Size(height, width));
+    cv::resize(cv_img_origin, cv_img, cv::Size(width,height));
   } else {
     cv_img = cv::imread(filename, cv_read_flag);
   }
@@ -105,6 +107,40 @@ bool ReadImageToDatum(const string& filename, const int label,
         }
       }
   }
+  return true;
+}
+
+// store four channels of each elements
+bool ReadImageToDatum_fourchannel(const string& filename, const int label,
+    const int height, const int width, const bool is_color, Datum* datum) {
+  cv::Mat cv_img;
+  int cv_read_flag = -1;
+  if (height > 0 && width > 0) {
+    cv::Mat cv_img_origin = cv::imread(filename, cv_read_flag);
+    cv::resize(cv_img_origin, cv_img, cv::Size(height, width));
+  } else {
+    cv_img = cv::imread(filename, cv_read_flag);
+  }
+  if (!cv_img.data) {
+    LOG(ERROR) << "Could not open or find file " << filename;
+    return false;
+  }
+
+  datum->set_channels(4);
+  datum->set_height(cv_img.rows);
+  datum->set_width(cv_img.cols);
+  datum->set_label(label);
+  datum->clear_data();
+  datum->clear_float_data();
+  string* datum_string = datum->mutable_data();
+  for (int c = 0; c < 4; ++c) {
+      for (int h = 0; h < cv_img.rows; ++h) {
+        for (int w = 0; w < cv_img.cols; ++w) {
+          datum_string->push_back(
+            static_cast<char>(cv_img.at<cv::Vec4b>(h, w)[c]));
+        }
+      }
+    }
   return true;
 }
 
